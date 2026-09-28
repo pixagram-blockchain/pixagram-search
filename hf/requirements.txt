@@ -1,0 +1,9 @@
+torch>=2.2
+transformers>=4.44
+pillow>=10
+sentencepiece>=0.2
+protobuf>=4
+# app.py (Space) — the gradio SDK image already ships gradio/fastapi/uvicorn; pins keep local runs identical
+gradio>=5
+fastapi>=0.110
+uvicorn>=0.29

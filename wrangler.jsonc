@@ -1,0 +1,66 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pixagram-search",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  // Native stats + xBRZ on a 400px artwork take well under a second of CPU; the
+  // ceiling is raised so a batch of 10 never trips the default 30 s.
+  "limits": { "cpu_ms": 300000 },
+
+  "rules": [{ "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": true }],
+
+  "vars": {
+    "APP_PREFIXES": "pixagram",
+    "EMBED_DIM": "768",
+    "EMBED_MODEL": "google/siglip-base-patch16-256-multilingual",
+    "HF_EMBED_URL": "https://primerz-pixagram-siglip-endpoint.hf.space/embed",
+    "MARKET_CUSTOM_JSON_IDS": "",
+    "RESPECT_AI_TRAINING_FLAG": "false",
+    "RPC_FALLBACK_URLS": "https://merlion.surf, https://blockforge.lol, https://pixarex.net, https://boitata.quest, https://pixa-dubai.xyz",
+    "RPC_URL": "https://api.pixagram.com",
+    "SCALER": "xbrz",
+    "STORE_IN_R2": "true",
+    "TAIL_BLOCKS_PER_TICK": "100",
+    "TAIL_IDLE_SECONDS": "3",
+    "UPSCALE_TARGET": "800",
+    "VLM_BACKEND": "moondream"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "pixagram-search", "database_id": "REPLACE_HERE", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "ART", "bucket_name": "pixagram-art" }],
+  "kv_namespaces": [{ "binding": "CACHE", "id": "REPLACE_HERE" }],
+  "vectorize": [{ "binding": "VEC", "index_name": "pixagram-art" }],
+  "ai": { "binding": "AI" },
+
+  "queues": {
+    "producers": [{ "binding": "ENRICH_QUEUE", "queue": "pixagram-enrich" }],
+    "consumers": [
+      {
+        "queue": "pixagram-enrich",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 8,
+        "max_concurrency": 2,
+        "dead_letter_queue": "pixagram-enrich-dlq"
+      }
+    ]
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "INDEXER", "class_name": "ChainIndexer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChainIndexer"] }],
+
+  "workflows": [
+    { "name": "pixagram-backfill", "binding": "BACKFILL", "class_name": "BackfillWorkflow" }
+  ],
+
+  // Nightly refresh of vote/payout counters for posts still in their payout window,
+  // plus a watchdog that re-arms the chain tail if its alarm ever got lost.
+  "triggers": { "crons": ["17 3 * * *", "*/10 * * * *"] }
+}
